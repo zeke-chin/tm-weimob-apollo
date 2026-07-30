@@ -1,4 +1,4 @@
-# weimob-apollo
+# tm-weimob-apollo
 
 基于 TypeScript、React、Vite 和 `vite-plugin-monkey` 开发的油猴脚本项目，支持在 Tampermonkey、Violentmonkey 等用户脚本管理器中运行。
 
@@ -100,7 +100,7 @@ pnpm build
 构建产物位于 `dist/`，默认用户脚本文件为：
 
 ```text
-dist/weimob-apollo.user.js
+dist/tm-weimob-apollo.user.js
 ```
 
 发布前应使用目标用户实际使用的用户脚本管理器进行一次完整验证。
@@ -116,7 +116,7 @@ dist/weimob-apollo.user.js
 ## 项目结构
 
 ```text
-weimob-apollo/
+tm-weimob-apollo/
 ├── src/
 │   ├── App.tsx          # React 主组件
 │   ├── App.css          # 组件样式

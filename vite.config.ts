@@ -10,7 +10,7 @@ export default defineConfig({
       entry: 'src/main.tsx',
       userscript: {
         name: 'Weimob Apollo 配置增强',
-        namespace: 'weimob-apollo',
+        namespace: 'tm-weimob-apollo',
         match: [
           'https://apollo.internal.hsmob.com/*',
           'http://apollo.qa.internal.hsmob.com/*',
