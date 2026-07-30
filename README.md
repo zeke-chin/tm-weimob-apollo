@@ -101,9 +101,36 @@ pnpm build
 
 ```text
 dist/tm-weimob-apollo.user.js
+dist/tm-weimob-apollo.meta.js
 ```
 
 发布前应使用目标用户实际使用的用户脚本管理器进行一次完整验证。
+
+## 安装与自动更新
+
+完成首个 GitHub Release 后，分享下面的链接即可让用户安装最新版：
+
+```text
+https://github.com/zeke-chin/tm-weimob-apollo/releases/latest/download/tm-weimob-apollo.user.js
+```
+
+构建会同时生成 `.meta.js` 文件。Tampermonkey 或 Violentmonkey 通过它检查版本；发现更高版本后，再下载 `.user.js` 完成更新。用户需在脚本管理器中开启更新检查。已安装没有更新地址的旧版本用户，需要通过上述链接重装一次。
+
+### 发布新版本
+
+GitHub Actions 会在推送 `v<版本号>` tag 时自动构建并创建 Release。tag 必须与 `package.json` 的版本一致，例如 `package.json` 为 `0.1.1` 时，tag 必须是 `v0.1.1`。
+
+```bash
+pnpm version patch
+git push origin main --follow-tags
+```
+
+首次发布 `0.1.0` 时，在提交并推送本次配置后执行：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## 可用命令
 

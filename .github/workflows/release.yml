@@ -1,0 +1,58 @@
+name: Release userscript
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Verify the release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$RELEASE_TAG" = "v$(node -p \"require('./package.json').version\")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build userscript
+        run: pnpm build
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/tm-weimob-apollo.user.js \
+              dist/tm-weimob-apollo.meta.js \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/tm-weimob-apollo.user.js \
+              dist/tm-weimob-apollo.meta.js \
+              --generate-notes \
+              --repo "$GITHUB_REPOSITORY"
+          fi
