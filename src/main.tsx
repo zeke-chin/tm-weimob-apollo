@@ -1,8 +1,9 @@
 import './index.css';
 
 const TOOLBAR_ID = 'weimob-apollo-toolbar';
-const COPY_BUTTON_CLASS = 'weimob-apollo-copy';
-const PROCESSED_ATTRIBUTE = 'data-weimob-apollo-copy-ready';
+const COPY_CELL_CLASS = 'weimob-apollo-copy-cell';
+const COPY_CELL_ATTRIBUTE = 'data-weimob-apollo-copy-cell';
+const TOAST_ID = 'weimob-apollo-copy-toast';
 
 function isVisible(element: Element): boolean {
   const style = window.getComputedStyle(element);
@@ -74,8 +75,6 @@ function setToolbarAction(action: 'expand' | 'collapse'): void {
 }
 
 async function copyText(value: string): Promise<void> {
-  if (!value) return;
-
   try {
     await navigator.clipboard.writeText(value);
     return;
@@ -86,19 +85,22 @@ async function copyText(value: string): Promise<void> {
     textarea.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
     document.body.append(textarea);
     textarea.select();
-    document.execCommand('copy');
+    const copied = document.execCommand('copy');
     textarea.remove();
+    if (!copied) throw new Error('Clipboard copy failed');
   }
 }
 
-function showCopyFeedback(button: HTMLButtonElement, copied: boolean): void {
-  const originalText = '复制';
-  button.textContent = copied ? '已复制' : '复制失败';
-  button.classList.toggle('weimob-apollo-copy--failed', !copied);
-  window.setTimeout(() => {
-    button.textContent = originalText;
-    button.classList.remove('weimob-apollo-copy--failed');
-  }, 1200);
+function showCopyFeedback(value: string, copied: boolean): void {
+  document.getElementById(TOAST_ID)?.remove();
+
+  const toast = document.createElement('div');
+  toast.id = TOAST_ID;
+  toast.className = copied ? '' : 'weimob-apollo-copy-toast--failed';
+  const preview = value.length > 60 ? `${value.slice(0, 60)}…` : value;
+  toast.textContent = copied ? `「${preview}」已复制到剪切板` : '复制到剪切板失败';
+  document.body.append(toast);
+  window.setTimeout(() => toast.remove(), 1800);
 }
 
 function copyableColumnIndexes(table: HTMLTableElement): number[] {
@@ -111,38 +113,87 @@ function copyableColumnIndexes(table: HTMLTableElement): number[] {
     .map(({ index }) => index);
 }
 
-function addCopyButtons(): void {
+function markCopyCells(): void {
   document.querySelectorAll<HTMLTableElement>('table').forEach((table) => {
     const columnIndexes = copyableColumnIndexes(table);
     if (!columnIndexes.length) return;
 
     table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach((row) => {
-      if (row.hasAttribute(PROCESSED_ATTRIBUTE)) return;
       const cells = Array.from(row.children) as HTMLTableCellElement[];
       columnIndexes.forEach((index) => {
         const cell = cells[index];
-        if (!cell) return;
-        const value = cell.innerText.trim();
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = COPY_BUTTON_CLASS;
-        button.textContent = '复制';
-        button.title = '复制此单元格内容';
-        button.addEventListener('click', async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          try {
-            await copyText(value);
-            showCopyFeedback(button, true);
-          } catch {
-            showCopyFeedback(button, false);
-          }
-        });
-        cell.append(button);
+        if (!cell || cell.hasAttribute(COPY_CELL_ATTRIBUTE) || !cell.innerText.trim()) return;
+        cell.classList.add(COPY_CELL_CLASS);
+        cell.setAttribute(COPY_CELL_ATTRIBUTE, '');
       });
-      row.setAttribute(PROCESSED_ATTRIBUTE, '');
     });
   });
+}
+
+function copyCellFromEventTarget(target: EventTarget | null): HTMLTableCellElement | null {
+  return target instanceof Element
+    ? target.closest<HTMLTableCellElement>(`td.${COPY_CELL_CLASS}`)
+    : null;
+}
+
+let selectionGesture:
+  | { cell: HTMLTableCellElement; x: number; y: number; moved: boolean; selected: boolean }
+  | null = null;
+
+function setupCopyInteraction(): void {
+  document.addEventListener('mousedown', (event) => {
+    const cell = copyCellFromEventTarget(event.target);
+    if (!cell) {
+      selectionGesture = null;
+      return;
+    }
+
+    selectionGesture = { cell, x: event.clientX, y: event.clientY, moved: false, selected: false };
+    // Apollo selects a cell on mousedown, before the click handler below can
+    // intercept it. Stop that page-level interaction while preserving the
+    // browser's default text-selection behavior for drag gestures.
+    event.stopImmediatePropagation();
+  }, { capture: true, signal: controller.signal });
+
+  document.addEventListener('mousemove', (event) => {
+    if (!selectionGesture) return;
+    if (Math.abs(event.clientX - selectionGesture.x) + Math.abs(event.clientY - selectionGesture.y) > 3) {
+      selectionGesture.moved = true;
+    }
+  }, { capture: true, signal: controller.signal });
+
+  document.addEventListener('mouseup', (event) => {
+    if (!selectionGesture) return;
+    selectionGesture.selected = selectionGesture.moved && Boolean(window.getSelection()?.toString().trim());
+    if (selectionGesture.selected) {
+      // Apollo binds a click-like handler to these cells and opens its “查看”
+      // dialog after a drag selection.  Stop that handler after the browser has
+      // already made the native selection, so Cmd/Ctrl+C still works normally.
+      event.stopImmediatePropagation();
+    }
+  }, { capture: true, signal: controller.signal });
+
+  document.addEventListener('click', async (event) => {
+    const cell = copyCellFromEventTarget(event.target);
+    if (!cell) {
+      selectionGesture = null;
+      return;
+    }
+
+    const selected = selectionGesture?.cell === cell && selectionGesture.selected;
+    selectionGesture = null;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (selected) return;
+
+    const value = cell.innerText.trim();
+    try {
+      await copyText(value);
+      showCopyFeedback(value, true);
+    } catch {
+      showCopyFeedback(value, false);
+    }
+  }, { capture: true, signal: controller.signal });
 }
 
 function mountToolbar(): void {
@@ -173,7 +224,8 @@ function mountToolbar(): void {
 
 function refresh(): void {
   mountToolbar();
-  addCopyButtons();
+  document.querySelectorAll('.weimob-apollo-copy').forEach((button) => button.remove());
+  markCopyCells();
 }
 
 const controller = new AbortController();
@@ -189,6 +241,7 @@ function scheduleRefresh(): void {
 }
 
 refresh();
+setupCopyInteraction();
 new MutationObserver(scheduleRefresh).observe(document.documentElement, {
   childList: true,
   subtree: true,
@@ -199,7 +252,8 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     controller.abort();
     document.getElementById(TOOLBAR_ID)?.remove();
-    document.querySelectorAll(`.${COPY_BUTTON_CLASS}`).forEach((button) => button.remove());
-    document.querySelectorAll(`[${PROCESSED_ATTRIBUTE}]`).forEach((row) => row.removeAttribute(PROCESSED_ATTRIBUTE));
+    document.getElementById(TOAST_ID)?.remove();
+    document.querySelectorAll(`.${COPY_CELL_CLASS}`).forEach((cell) => cell.classList.remove(COPY_CELL_CLASS));
+    document.querySelectorAll(`[${COPY_CELL_ATTRIBUTE}]`).forEach((cell) => cell.removeAttribute(COPY_CELL_ATTRIBUTE));
   });
 }
